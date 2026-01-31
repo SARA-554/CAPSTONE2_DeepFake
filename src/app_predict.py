@@ -8,7 +8,10 @@ import librosa
 import joblib
 from scipy.sparse import hstack, csr_matrix
 
+import whisper  # Python API (reliable on Streamlit Cloud)
+
 MODEL_DIR = Path("models/best_text_audio_mfcc")
+_WHISPER_MODEL = None
 
 def load_bundle():
     vec = joblib.load(MODEL_DIR / "tfidf_vectorizer.joblib")
@@ -18,27 +21,20 @@ def load_bundle():
     return vec, scaler, clf, meta
 
 def run_ffmpeg_extract_audio(video_path: str, wav_out: str):
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", video_path,
-        "-ac", "1", "-ar", "16000",
-        wav_out
-    ]
+    cmd = ["ffmpeg", "-y", "-i", video_path, "-ac", "1", "-ar", "16000", wav_out]
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def run_whisper_transcribe(wav_path: str) -> str:
-    # Whisper CLI writes output files; we use temp folder and read .txt
-    out_dir = Path(tempfile.mkdtemp())
-    cmd = ["python3","-m","whisper", wav_path,
-        "--model", "base",
-        "--language", "en",
-        "--task", "transcribe",
-        "--output_dir", str(out_dir),
-        "--output_format", "txt"
-    ]
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    txt = out_dir / (Path(wav_path).stem + ".txt")
-    return txt.read_text(encoding="utf-8", errors="ignore").strip() if txt.exists() else ""
+    # Load once per server process (faster + stable)
+    global _WHISPER_MODEL
+    if _WHISPER_MODEL is None:
+        _WHISPER_MODEL = whisper.load_model("base")
+
+    try:
+        res = _WHISPER_MODEL.transcribe(wav_path, fp16=False, language="en", task="transcribe")
+        return (res.get("text") or "").strip()
+    except Exception:
+        return ""
 
 def mfcc_stats(wav_path: str, sr: int, n_mfcc: int) -> np.ndarray:
     y, sr = librosa.load(wav_path, sr=sr, mono=True)
@@ -76,4 +72,3 @@ def predict_video(video_file_path: str):
             "prob_fake": float(proba[1]),
             "transcript": transcript
         }
-
