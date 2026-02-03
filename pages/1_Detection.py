@@ -9,7 +9,8 @@ st.set_page_config(page_title="Detection", page_icon="🔍", layout="wide")
 with open("assets/cyber.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-mode = st.radio("Select media type", ["Video", "Image"], horizontal=True)
+mode = st.selectbox("Select media type", ["Video", "Image"])
+
 
 
 st.markdown("""
