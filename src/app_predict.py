@@ -71,4 +71,67 @@ def predict_video(video_file_path: str):
             "prob_real": float(proba[0]),
             "prob_fake": float(proba[1]),
             "transcript": transcript
-        }
+        } # =========================
+# IMAGE DEEPFAKE (SAFE ADD)
+# =========================
+import torch
+import torch.nn as nn
+from torchvision import transforms, models
+from PIL import Image
+import numpy as np
+
+_IMAGE_MODEL = None
+_IMAGE_TFM = None
+_IMAGE_CLASSES = None
+_IMAGE_DEVICE = None
+
+def _get_device():
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return torch.device("mps")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")
+
+def _load_image_model():
+    global _IMAGE_MODEL, _IMAGE_TFM, _IMAGE_CLASSES, _IMAGE_DEVICE
+    if _IMAGE_MODEL is not None:
+        return
+
+    _IMAGE_DEVICE = _get_device()
+    ckpt = torch.load("models/image_resnet18_best.pt", map_location="cpu")
+
+    img_size = int(ckpt.get("img_size", 160))
+    _IMAGE_CLASSES = ckpt.get("classes", ["fake", "real"])
+
+    model = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+    model.fc = nn.Linear(model.fc.in_features, 2)
+    model.load_state_dict(ckpt["state_dict"])
+    model.eval().to(_IMAGE_DEVICE)
+
+    _IMAGE_TFM = transforms.Compose([
+        transforms.Resize((img_size, img_size)),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225]),
+    ])
+
+    _IMAGE_MODEL = model
+
+@torch.no_grad()
+def predict_image(pil_image):
+    _load_image_model()
+
+    x = _IMAGE_TFM(pil_image.convert("RGB")).unsqueeze(0).to(_IMAGE_DEVICE)
+    logits = _IMAGE_MODEL(x)
+    probs = torch.softmax(logits, dim=1).squeeze().cpu().tolist()
+
+    idx = int(np.argmax(probs))
+    label = _IMAGE_CLASSES[idx]
+
+    return {
+        "modality": "image",
+        "prediction": label,
+        "confidence": float(probs[idx]),
+        "prob_real": float(probs[_IMAGE_CLASSES.index("real")]),
+        "prob_fake": float(probs[_IMAGE_CLASSES.index("fake")]),
+    }
+
