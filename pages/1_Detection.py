@@ -1,7 +1,7 @@
 import streamlit as st
 import tempfile
 from pathlib import Path
-from src.app_predict import predict_video , predict_image
+from src.app_predict import predict_video
 from PIL import Image
 
 st.set_page_config(page_title="Detection", page_icon="🔍", layout="wide")
