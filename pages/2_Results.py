@@ -13,6 +13,8 @@ if not r:
     st.warning("No result found. Go to Detection and run analysis.")
     st.stop()
 
+modality = (r.get("modality") or "video").lower()  # added (safe default)
+
 pred = str(r.get("prediction", "UNKNOWN")).upper()
 conf = float(r.get("confidence", 0.0)) * 100.0
 p_real = float(r.get("prob_real", 0.0)) * 100.0
@@ -20,6 +22,14 @@ p_fake = float(r.get("prob_fake", 0.0)) * 100.0
 transcript = r.get("transcript", "") or ""
 
 badge_class = "fake" if pred == "FAKE" else "real"
+
+# Explanation text depends on modality (added)
+if modality == "image":
+    expl = "Prediction is computed from the uploaded image using your trained ResNet model."
+elif modality == "audio":
+    expl = "Prediction is computed using TF-IDF (script) + MFCC (audio) features with your trained classifier bundle."
+else:
+    expl = "Prediction is computed using your saved training configuration (meta.json) with TF-IDF (script) + MFCC (audio) features."
 
 st.markdown(f"""
 <div class="df-card">
@@ -32,14 +42,19 @@ st.markdown(f"""
   <div class="df-hr"></div>
   <b>Explanation</b><br>
   <span style="color: rgba(230,230,230,.78);">
-    Prediction is computed using your saved training configuration (meta.json) with TF-IDF (script) + MFCC (audio) features.
+    {expl}
   </span>
 </div>
 """, unsafe_allow_html=True)
 
-st.markdown("")
-st.subheader("📝 Script / Transcription")
-st.markdown(f"<div class='df-card-plain df-mono'>{transcript if transcript else 'No transcript extracted.'}</div>", unsafe_allow_html=True)
+# Transcript section only makes sense for video/audio (added condition)
+if modality in ("video", "audio"):
+    st.markdown("")
+    st.subheader("📝 Script / Transcription")
+    st.markdown(
+        f"<div class='df-card-plain df-mono'>{transcript if transcript else 'No transcript extracted.'}</div>",
+        unsafe_allow_html=True
+    )
 
 st.markdown("")
 col1, col2 = st.columns([1, 1])
@@ -50,6 +65,7 @@ with col1:
 
 with col2:
     report = {
+        "modality": r.get("modality"),  # added
         "prediction": r.get("prediction"),
         "confidence": r.get("confidence"),
         "prob_real": r.get("prob_real"),

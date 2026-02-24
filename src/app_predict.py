@@ -66,17 +66,59 @@ def predict_video(video_file_path: str):
         pred_label = inv[pred_idx]
 
         return {
+            "modality": "video",  # added (safe)
             "prediction": pred_label,
             "confidence": float(proba[pred_idx]),
             "prob_real": float(proba[0]),
             "prob_fake": float(proba[1]),
             "transcript": transcript
-        } # =========================
+        }
+
+# =========================
+# AUDIO DEEPFAKE (added)
+# =========================
+def predict_audio(audio_file_path: str):
+    vec, scaler, clf, meta = load_bundle()
+    sr = int(meta["sr"])
+    n_mfcc = int(meta["n_mfcc"])
+    inv = {int(k): v for k, v in meta["inverse_label_map"].items()}
+
+    with tempfile.TemporaryDirectory() as td:
+        wav_path = str(Path(td) / "audio.wav")
+
+        # Convert to 16k mono wav if needed
+        if audio_file_path.lower().endswith(".wav"):
+            Path(wav_path).write_bytes(Path(audio_file_path).read_bytes())
+        else:
+            cmd = ["ffmpeg", "-y", "-i", audio_file_path, "-ac", "1", "-ar", "16000", wav_path]
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        transcript = run_whisper_transcribe(wav_path)
+        X_text = vec.transform([transcript])
+
+        x_audio = mfcc_stats(wav_path, sr=sr, n_mfcc=n_mfcc).reshape(1, -1)
+        x_audio_s = scaler.transform(x_audio)
+
+        X = hstack([X_text, csr_matrix(x_audio_s)])
+        proba = clf.predict_proba(X)[0]
+        pred_idx = int(np.argmax(proba))
+        pred_label = inv[pred_idx]
+
+        return {
+            "modality": "audio",
+            "prediction": pred_label,
+            "confidence": float(proba[pred_idx]),
+            "prob_real": float(proba[0]),
+            "prob_fake": float(proba[1]),
+            "transcript": transcript
+        }
+
+# =========================
 # IMAGE DEEPFAKE (SAFE ADD)
 # =========================
 import torch
 import torch.nn as nn
-from torchvision import models, transforms
+from torchvision import models, transforms  # added (required)
 from PIL import Image
 import numpy as np
 
@@ -134,4 +176,3 @@ def predict_image(pil_image):
         "prob_real": float(probs[_IMAGE_CLASSES.index("real")]),
         "prob_fake": float(probs[_IMAGE_CLASSES.index("fake")]),
     }
-

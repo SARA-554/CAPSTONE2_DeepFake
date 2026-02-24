@@ -1,7 +1,7 @@
 import streamlit as st
 import tempfile
 from pathlib import Path
-from src.app_predict import predict_video
+from src.app_predict import predict_video, predict_image, predict_audio
 from PIL import Image
 
 st.set_page_config(page_title="Detection", page_icon="🔍", layout="wide")
@@ -9,9 +9,7 @@ st.set_page_config(page_title="Detection", page_icon="🔍", layout="wide")
 with open("assets/cyber.css") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-mode = st.selectbox("Select media type", ["Video", "Image"])
-
-
+mode = st.selectbox("Select media type", ["Video", "Image", "Audio"])
 
 st.markdown("""
 <div class="df-card-plain">
@@ -23,6 +21,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("")
+
+# Make sure result exists for all modes (added)
+if "result" not in st.session_state:
+    st.session_state["result"] = None
 
 # =========================
 # VIDEO MODE
@@ -56,9 +58,6 @@ Use a 5–15 second clip for the fastest result.
 </div>
 """, unsafe_allow_html=True)
 
-        if "result" not in st.session_state:
-            st.session_state["result"] = None
-
         run = st.button("🚀 Run Detection", use_container_width=True, disabled=(uploaded is None))
 
         if run and uploaded:
@@ -87,6 +86,29 @@ if mode == "Image":
         if run_img:
             with st.spinner("Analyzing image..."):
                 result = predict_image(pil_img)
+
+            st.session_state["result"] = result
+            st.switch_page("pages/2_Results.py")
+
+
+# =========================
+# AUDIO MODE (added)
+# =========================
+if mode == "Audio":
+    audio_file = st.file_uploader("Upload an audio file", type=["wav", "mp3", "m4a"])
+
+    if audio_file:
+        audio_bytes = audio_file.getvalue()
+        st.audio(audio_bytes)
+
+        run_audio = st.button("🎧 Run Audio Detection", use_container_width=True)
+
+        if run_audio:
+            with st.spinner("Transcribing + extracting MFCC + predicting..."):
+                with tempfile.TemporaryDirectory() as td:
+                    aud_path = Path(td) / audio_file.name
+                    aud_path.write_bytes(audio_bytes)
+                    result = predict_audio(str(aud_path))
 
             st.session_state["result"] = result
             st.switch_page("pages/2_Results.py")
